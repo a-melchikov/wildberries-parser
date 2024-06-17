@@ -1,7 +1,6 @@
 import datetime
-
 import asyncio
-
+import random
 import aiohttp
 import requests
 import pandas as pd
@@ -101,21 +100,31 @@ def get_data_from_json(json_file: dict) -> list:
 	return data_list
 
 
-# @retry(Exception, tries=-1, delay=0)
-async def scrap_page(page: int, shard: str, query: str, low_price: int, top_price: int, discount: int = None) -> dict:
-	"""Сбор данных со страницы"""
+def get_url(page: int, shard: str, query: str, low_price: int, top_price: int, discount: int = None):
 	url = f"https://catalog.wb.ru/catalog/{shard}/catalog?appType=1&curr=rub" \
-		  f"&dest=-1257786" \
+		  f"&dest=-971647" \
 		  f"&locale=ru" \
 		  f"&page={page}" \
 		  f"&priceU={low_price * 100};{top_price * 100}" \
 		  f"&sort=popular&spp=0" \
 		  f"&{query}" \
 		  f"&discount={discount}"
+	return url
 
+
+# @retry(Exception, tries=-1, delay=0)
+async def scrap_page(page: int, shard: str, query: str, low_price: int, top_price: int, discount: int = None) -> dict:
+	"""Сбор данных со страницы"""
+
+	url = get_url(page, shard, query, low_price, top_price, discount)
 	try:
 		async with aiohttp.ClientSession() as session:
+			HEADERS['User-Agent'] = ua.random
 			response = await session.get(url=url)
+			if response.status == 429:
+				print(f"Too Many Requests: {url}")
+				return await scrap_page(page, shard, query, low_price, top_price, discount)
+
 			response.raise_for_status()
 			response.encoding = 'utf-8'
 			print(f"[+] Страница {page}")
@@ -152,6 +161,12 @@ def save_excel(data: list, filename: str):
 	print(f"Данные сохранены в {filename}.xlsx\n")
 
 
+def get_total_count(page: int, shard: str, query: str, low_price: int, top_price: int, discount: int = None) -> int:
+	url = get_url(page, shard, query, low_price, top_price, discount)
+	response = requests.get(url=url, headers=HEADERS)
+	return response.json().get('data').get('total', 0)
+
+
 async def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, discount: int = 0):
 	"""Основная функция"""
 	catalog_data = get_data_category(get_catalogs_wb())  # Получение данных по заданному каталогу
@@ -167,10 +182,10 @@ async def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, disco
 			return
 
 		data_list = []
-
 		tasks = []
-
-		for page in range(1, 31):
+		total_count = get_total_count(page=1, shard=category['shard'], query=category['query'], low_price=low_price,
+									  top_price=top_price, discount=discount)
+		for page in range(1, (total_count // 100) + 2):
 			tasks.append(
 				asyncio.create_task(
 					scrap_page(
@@ -201,7 +216,7 @@ async def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, disco
 
 
 async def main():
-	url = "https://www.wildberries.ru/catalog/dlya-doma/mebel/kronshteiny"  # Ссылка на категорию
+	url = "https://www.wildberries.ru/catalog/detyam/odezhda/dlya-devochek/bryuki-i-shorty"  # Ссылка на категорию
 	low_price = 100
 	top_price = 1_000_000
 	discount = 10
