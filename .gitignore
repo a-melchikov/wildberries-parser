@@ -166,3 +166,4 @@ avatars
 .idea
 .env.prod
 staticfiles
+*.xlsx
