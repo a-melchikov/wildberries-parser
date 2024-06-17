@@ -1,4 +1,8 @@
 import datetime
+
+import asyncio
+
+import aiohttp
 import requests
 import pandas as pd
 from retry import retry
@@ -8,6 +12,17 @@ ua = UserAgent()
 
 HEADERS = {
 	"User-Agent": ua.random,
+	"Accept": "*/*",
+	"Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
+	"Origin": "https://www.wildberries.ru",
+	"Content-Type": "application/json; charset=utf-8",
+	"Transfer-Encoding": "chunked",
+	"Connection": "keep-alive",
+	"Vary": "Accept-Encoding",
+	"Content-Encoding": "gzip",
+	"Sec-Fetch-Dest": "empty",
+	"Sec-Fetch-Mode": "cors",
+	"Sec-Fetch-Site": "cross-site",
 }
 
 CATALOG_URL = "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v2.json"
@@ -86,8 +101,8 @@ def get_data_from_json(json_file: dict) -> list:
 	return data_list
 
 
-@retry(Exception, tries=-1, delay=0)
-def scrap_page(page: int, shard: str, query: str, low_price: int, top_price: int, discount: int = None) -> dict:
+# @retry(Exception, tries=-1, delay=0)
+async def scrap_page(page: int, shard: str, query: str, low_price: int, top_price: int, discount: int = None) -> dict:
 	"""Сбор данных со страницы"""
 	url = f"https://catalog.wb.ru/catalog/{shard}/catalog?appType=1&curr=rub" \
 		  f"&dest=-1257786" \
@@ -99,11 +114,20 @@ def scrap_page(page: int, shard: str, query: str, low_price: int, top_price: int
 		  f"&discount={discount}"
 
 	try:
-		response = requests.get(url, headers=HEADERS)
-		response.raise_for_status()
-		response.encoding = 'utf-8'
-		print(f"[+] Страница {page}")
-		return response.json()
+		async with aiohttp.ClientSession() as session:
+			response = await session.get(url=url)
+			response.raise_for_status()
+			response.encoding = 'utf-8'
+			print(f"[+] Страница {page}")
+
+			for _ in range(5):
+				if response.status == 200:
+					break
+				response = await session.get(url=url)
+			if response.status != 200:
+				return {}
+			return await response.json(content_type=None)
+
 	except requests.exceptions.HTTPError as http_err:
 		print(f"Произошла ошибка HTTP: {http_err}")
 	except requests.exceptions.RequestException as req_err:
@@ -128,7 +152,7 @@ def save_excel(data: list, filename: str):
 	print(f"Данные сохранены в {filename}.xlsx\n")
 
 
-def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, discount: int = 0):
+async def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, discount: int = 0):
 	"""Основная функция"""
 	catalog_data = get_data_category(get_catalogs_wb())  # Получение данных по заданному каталогу
 	if not catalog_data:
@@ -143,22 +167,28 @@ def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, discount: i
 			return
 
 		data_list = []
-		for page in range(1, 51):
-			data = scrap_page(
-				page=page,
-				shard=category['shard'],
-				query=category['query'],
-				low_price=low_price,
-				top_price=top_price,
-				discount=discount
+
+		tasks = []
+
+		for page in range(1, 31):
+			tasks.append(
+				asyncio.create_task(
+					scrap_page(
+						page=page,
+						shard=category['shard'],
+						query=category['query'],
+						low_price=low_price,
+						top_price=top_price,
+						discount=discount
+					))
 			)
-			if data is None:
-				break
+
+		result_list = await asyncio.gather(*tasks)
+
+		for data in result_list:
 			json_data = get_data_from_json(data)
 			if len(json_data) > 0:
 				data_list.extend(json_data)
-			else:
-				break
 
 		print(f"Сбор данных завершен. Собрано: {len(data_list)} товаров.")
 		# Сохранение найденных данных
@@ -170,14 +200,14 @@ def parser(url: str, low_price: int = 1, top_price: int = 1_000_000, discount: i
 		print("Ошибка! Вы забыли закрыть созданный ранее excel файл. Закройте и повторите попытку")
 
 
-def main():
+async def main():
 	url = "https://www.wildberries.ru/catalog/dlya-doma/mebel/kronshteiny"  # Ссылка на категорию
 	low_price = 100
 	top_price = 1_000_000
 	discount = 10
 	start = datetime.datetime.now()
 
-	parser(url=url, low_price=low_price, top_price=top_price, discount=discount)
+	await parser(url=url, low_price=low_price, top_price=top_price, discount=discount)
 
 	end = datetime.datetime.now()
 	total = end - start
@@ -185,4 +215,4 @@ def main():
 
 
 if __name__ == '__main__':
-	main()
+	asyncio.run(main())
