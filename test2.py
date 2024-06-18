@@ -9,6 +9,7 @@ from logging import (
     FileHandler,
     StreamHandler,
     INFO,
+    WARNING,
 )
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -20,11 +21,10 @@ import schedule
 import time
 import shutil
 
-
 logger: Logger = getLogger(__name__)
 FORMAT = "%(asctime)s : %(name)s : %(levelname)s : %(message)s"
 file_handler = FileHandler("data.log")
-file_handler.setLevel(DEBUG)
+file_handler.setLevel(WARNING)
 console = StreamHandler()
 console.setLevel(INFO)
 basicConfig(level=DEBUG, format=FORMAT, handlers=[file_handler, console])
@@ -40,6 +40,7 @@ CATALOG_URL: str = (
 
 CURRENT_DATA_DIR = "current_data"
 PREVIOUS_DATA_DIR = "previous_data"
+CHANGES_DATA_DIR = "changes_data"
 
 
 def get_catalogs_wb() -> dict:
@@ -50,7 +51,7 @@ def get_catalogs_wb() -> dict:
     }
     try:
         response: requests.Response = requests.get(
-            url=CATALOG_URL, headers=headers, proxies=PROXIES, timeout=10
+            url=CATALOG_URL, headers=headers, proxies=PROXIES
         )
         response.raise_for_status()
         logger.info("Успешно получили данные каталога")
@@ -175,10 +176,10 @@ def scrap_page(
     return response.json()
 
 
-def save_csv(data: list, filename: str) -> None:
+def save_csv(data: list, filename: str, directory: str = CURRENT_DATA_DIR) -> None:
     """Сохранение результата в CSV файл"""
     df = pd.DataFrame(data)
-    file_path: str = os.path.join(CURRENT_DATA_DIR, f"{filename}.csv")
+    file_path: str = os.path.join(directory, f"{filename}.csv")
     df.to_csv(file_path, index=False)
     logger.info("Все сохранено в %s", file_path)
 
@@ -251,10 +252,100 @@ def move_data_to_previous() -> None:
         logger.warning("Каталог %s не существует", CURRENT_DATA_DIR)
 
 
+def compare_and_save_changes() -> None:
+    """Сравнение файлов и сохранение изменений"""
+    if not os.path.exists(CHANGES_DATA_DIR):
+        os.makedirs(CHANGES_DATA_DIR)
+
+    columns_to_include = [
+        "id",
+        "name_current",
+        "price_current",
+        "salePriceU_current",
+        "salePriceU_previous",
+        "sale_current",
+        "brand_current",
+        "rating_current",
+        "supplier_current",
+        "supplierRating_current",
+        "feedbacks_current",
+        "reviewRating_current",
+        "promoTextCard_current",
+        "promoTextCat_current",
+        "link_current",
+    ]
+
+    for current_file in os.listdir(CURRENT_DATA_DIR):
+        current_filepath = os.path.join(CURRENT_DATA_DIR, current_file)
+        previous_filepath = os.path.join(PREVIOUS_DATA_DIR, current_file)
+
+        if os.path.exists(previous_filepath):
+            current_df = pd.read_csv(current_filepath)
+            previous_df = pd.read_csv(previous_filepath)
+
+            merged_df = current_df.merge(
+                previous_df, on="id", suffixes=("_current", "_previous")
+            )
+
+            def calculate_percent_change(current_price, previous_price):
+                if previous_price == 0:
+                    return float("inf") if current_price != 0 else 0
+                return ((current_price - previous_price) / previous_price) * 100
+
+            merged_df["percent_change"] = merged_df.apply(
+                lambda row: calculate_percent_change(
+                    row["salePriceU_current"], row["salePriceU_previous"]
+                ),
+                axis=1,
+            )
+
+            changes_df = merged_df[(merged_df["percent_change"] < -10)]
+
+            if not changes_df.empty:
+                changes_filepath = os.path.join(
+                    CHANGES_DATA_DIR, f"changes_{current_file}"
+                )
+                changes_df = changes_df[columns_to_include]
+                changes_df.columns = [
+                    col.replace("_current", "") for col in changes_df.columns
+                ]
+                changes_df.to_csv(changes_filepath, index=False)
+                logger.info("Изменения сохранены в %s", changes_filepath)
+
+                message = ""
+                for _, row in changes_df.iterrows():
+                    message += (
+                        f"{row['name']},\n"
+                        f"Цена была: {row['salePriceU_previous']}\n"
+                        f"Цена стала: {row['salePriceU']}\n"
+                        f"Цена уменьшилась на {-calculate_percent_change(row["salePriceU"], row["salePriceU_previous"])}%\n"
+                        f"Ссылка: {row['link']}\n"
+                    )
+
+                send_telegram(message)
+            else:
+                logger.info("Изменений не найдено для файла %s", current_file)
+        else:
+            logger.warning("Предыдущий файл для %s не найден", current_file)
+
+
 def scheduled_job() -> None:
     """Функция для выполнения запланированной работы"""
     move_data_to_previous()
     main()
+    compare_and_save_changes()
+
+
+def send_telegram(text: str):
+    token = os.getenv("token")
+    url = "https://api.telegram.org/bot"
+    channels_id = os.getenv("channel_id").split(",")
+    url += token
+    method = url + "/sendMessage"
+    for channel_id in channels_id:
+        r = requests.post(
+            method, data={"chat_id": channel_id, "text": text, "parse_mode": "HTML"}
+        )
 
 
 def main() -> None:
@@ -273,19 +364,21 @@ def main() -> None:
 
     start: datetime.datetime = datetime.datetime.now()
 
-    with ThreadPoolExecutor(max_workers=len(urls)) as executor:
-        futures: list[Future[None]] = [
-            executor.submit(parser, url, low_price, top_price, discount) for url in urls
-        ]
-        for future in as_completed(futures):
-            future.result()
-
+    # with ThreadPoolExecutor(max_workers=len(urls)) as executor:
+    #     futures: list[Future[None]] = [
+    #         executor.submit(parser, url, low_price, top_price, discount) for url in urls
+    #     ]
+    #     for future in as_completed(futures):
+    #         future.result()
+    for url in urls:
+        parser(url=url, low_price=low_price, top_price=top_price, discount=discount)
     end: datetime.datetime = datetime.datetime.now()
     total: datetime.timedelta = end - start
     logger.info("Затраченное время: %s", str(total))
 
 
 if __name__ == "__main__":
+    scheduled_job()
     schedule.every(1).minutes.do(scheduled_job)
 
     while True:
