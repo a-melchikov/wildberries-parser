@@ -16,6 +16,9 @@ import requests
 import pandas as pd
 from retry import retry
 from dotenv import load_dotenv
+import schedule
+import time
+import shutil
 
 
 logger: Logger = getLogger(__name__)
@@ -34,6 +37,9 @@ PROXIES: dict[str, str] = {
 CATALOG_URL: str = (
     "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v2.json"
 )
+
+CURRENT_DATA_DIR = "current_data"
+PREVIOUS_DATA_DIR = "previous_data"
 
 
 def get_catalogs_wb() -> dict:
@@ -172,8 +178,9 @@ def scrap_page(
 def save_csv(data: list, filename: str) -> None:
     """Сохранение результата в CSV файл"""
     df = pd.DataFrame(data)
-    df.to_csv(f"data/{filename}.csv", index=False)
-    logger.info("Все сохранено в %s.csv", filename)
+    file_path: str = os.path.join(CURRENT_DATA_DIR, f"{filename}.csv")
+    df.to_csv(file_path, index=False)
+    logger.info("Все сохранено в %s", file_path)
 
 
 def parser(
@@ -229,6 +236,27 @@ def parser(
         logger.error("Произошла непредвиденная ошибка: %s", str(e))
 
 
+def move_data_to_previous() -> None:
+    """Перемещение данных из current_data в previous_data"""
+    if os.path.exists(CURRENT_DATA_DIR):
+        if not os.path.exists(PREVIOUS_DATA_DIR):
+            os.makedirs(PREVIOUS_DATA_DIR)
+        for filename in os.listdir(CURRENT_DATA_DIR):
+            shutil.move(
+                os.path.join(CURRENT_DATA_DIR, filename),
+                os.path.join(PREVIOUS_DATA_DIR, filename),
+            )
+        logger.info("Данные перемещены в %s", PREVIOUS_DATA_DIR)
+    else:
+        logger.warning("Каталог %s не существует", CURRENT_DATA_DIR)
+
+
+def scheduled_job() -> None:
+    """Функция для выполнения запланированной работы"""
+    move_data_to_previous()
+    main()
+
+
 def main() -> None:
     urls: list[str] = [
         "https://www.wildberries.ru/catalog/zhenshchinam/odezhda/kostyumy",
@@ -258,4 +286,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    schedule.every(1).minutes.do(scheduled_job)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
