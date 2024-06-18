@@ -167,3 +167,4 @@ avatars
 .env.prod
 staticfiles
 *.xlsx
+*.csv
