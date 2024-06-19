@@ -10,6 +10,7 @@ from retry import retry
 from dotenv import load_dotenv
 import schedule
 from logging_config import LogConfig, LoggerSetup
+from catalog_fetcher import CatalogFetcher
 
 load_dotenv()
 logger_setup = LoggerSetup(logger_name=__name__, log_config=LogConfig(filename=None))
@@ -25,63 +26,6 @@ CATALOG_URL: str = (
 CURRENT_DATA_DIR = "current_data"
 PREVIOUS_DATA_DIR = "previous_data"
 CHANGES_DATA_DIR = "changes_data"
-
-
-def get_catalogs_wb() -> dict:
-    """Получаем полный каталог Wildberries"""
-    headers: dict[str, str] = {
-        "Accept": "*/*",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    }
-    try:
-        response: requests.Response = requests.get(
-            url=CATALOG_URL, headers=headers, proxies=PROXIES
-        )
-        response.raise_for_status()
-        logger.info("Успешно получили данные каталога")
-        return response.json()
-    except requests.exceptions.HTTPError as http_err:
-        logger.error("Произошла ошибка HTTP: %s", http_err)
-    except requests.exceptions.RequestException as req_err:
-        logger.error("Произошла ошибка запроса: %s", req_err)
-    except ValueError as json_err:
-        logger.error("Ошибка декодирования JSON: %s", json_err)
-    return None
-
-
-def get_data_category(catalogs_wb: dict) -> list:
-    """Сбор данных категорий из каталога Wildberries"""
-    if not catalogs_wb:
-        logger.warning("Не удалось получить данные каталога.")
-        return []
-
-    catalog_data: list = []
-    if isinstance(catalogs_wb, dict):
-        if "childs" not in catalogs_wb:
-            catalog_data.append(
-                {
-                    "name": catalogs_wb.get("name", "Неизвестная категория"),
-                    "shard": catalogs_wb.get("shard"),
-                    "url": catalogs_wb.get("url"),
-                    "query": catalogs_wb.get("query"),
-                }
-            )
-        else:
-            catalog_data.extend(get_data_category(catalogs_wb.get("childs", [])))
-    else:
-        for child in catalogs_wb:
-            catalog_data.extend(get_data_category(child))
-    return catalog_data
-
-
-def search_category_in_catalog(url: str, catalog_list: list) -> dict:
-    """Проверка пользовательской ссылки на наличие в каталоге"""
-    for catalog in catalog_list:
-        if catalog["url"] == url.split("https://www.wildberries.ru")[-1]:
-            logger.info("Найдено совпадение: %s", catalog["name"])
-            return catalog
-    logger.warning("Категория не найдена в каталоге.")
-    return None
 
 
 def get_data_from_json(json_file: dict) -> list:
@@ -172,12 +116,12 @@ def parser(
     url: str, low_price: int = 1, top_price: int = 1000000, discount: int = 0
 ) -> None:
     """Основная функция"""
-    catalog_data: list = get_data_category(get_catalogs_wb())
+    catalog_data: list = CatalogFetcher.get_data_category(CatalogFetcher.get_catalogs_wb())
     if not catalog_data:
         return
 
     try:
-        category: dict = search_category_in_catalog(url=url, catalog_list=catalog_data)
+        category: dict = CatalogFetcher.search_category_in_catalog(url=url, catalog_list=catalog_data)
         if category is None:
             logger.error("Ошибка! Категория не найдена.")
             return
