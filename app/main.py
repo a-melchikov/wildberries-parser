@@ -1,35 +1,19 @@
-from concurrent.futures._base import Future
+from logging import Logger
 import os
 import datetime
-from logging import (
-    Logger,
-    getLogger,
-    basicConfig,
-    DEBUG,
-    FileHandler,
-    StreamHandler,
-    INFO,
-    WARNING,
-)
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+import time
+import shutil
 import requests
 import pandas as pd
 from retry import retry
 from dotenv import load_dotenv
 import schedule
-import time
-import shutil
-
-logger: Logger = getLogger(__name__)
-FORMAT = "%(asctime)s : %(name)s : %(levelname)s : %(message)s"
-file_handler = FileHandler("data.log")
-file_handler.setLevel(WARNING)
-console = StreamHandler()
-console.setLevel(INFO)
-basicConfig(level=DEBUG, format=FORMAT, handlers=[file_handler, console])
+from logging_config import LogConfig, LoggerSetup
 
 load_dotenv()
+logger_setup = LoggerSetup(logger_name=__name__, log_config=LogConfig(filename=None))
+logger: Logger = logger_setup.get_logger()
 
 PROXIES: dict[str, str] = {
     "http": os.getenv("proxy"),
@@ -314,15 +298,13 @@ def compare_and_save_changes() -> None:
 
                 message = ""
                 for _, row in changes_df.iterrows():
-                    message += (
-                        f"{row['name']},\n"
+                    send_telegram(
+                        f"{row['name']}\n"
                         f"Цена была: {row['salePriceU_previous']}\n"
                         f"Цена стала: {row['salePriceU']}\n"
                         f"Цена уменьшилась на {-calculate_percent_change(row["salePriceU"], row["salePriceU_previous"])}%\n"
                         f"Ссылка: {row['link']}\n"
                     )
-
-                send_telegram(message)
             else:
                 logger.info("Изменений не найдено для файла %s", current_file)
         else:
