@@ -3,13 +3,13 @@ import os
 import datetime
 import time
 import shutil
-import requests
 import pandas as pd
 from dotenv import load_dotenv
 import schedule
 from logging_config import LogConfig, LoggerSetup
 from catalog_fetcher import CatalogFetcher
 from data_fetcher import DataFetcher
+from notification import NotificationService
 
 load_dotenv()
 logger_setup = LoggerSetup(logger_name=__name__, log_config=LogConfig(filename=None))
@@ -26,6 +26,8 @@ CURRENT_DATA_DIR = "current_data"
 PREVIOUS_DATA_DIR = "previous_data"
 CHANGES_DATA_DIR = "changes_data"
 
+TOKEN: str = os.getenv("token")
+CHANNEL_IDS: list[str] = os.getenv("channel_id").split(",")
 
 def get_data_from_json(json_file: dict) -> list:
     """Извлекаем данные из JSON"""
@@ -186,9 +188,9 @@ def compare_and_save_changes() -> None:
                 changes_df.to_csv(changes_filepath, index=False)
                 logger.info("Изменения сохранены в %s", changes_filepath)
 
-                message = ""
+                notification_service = NotificationService(TOKEN, CHANNEL_IDS)
                 for _, row in changes_df.iterrows():
-                    send_telegram(
+                    notification_service.send_message(
                         f"---------TEST---------"
                         f"{row['name']}\n"
                         f"Цена была: {row['salePriceU_previous']}\n"
@@ -207,18 +209,6 @@ def scheduled_job() -> None:
     move_data_to_previous()
     main()
     compare_and_save_changes()
-
-
-def send_telegram(text: str):
-    token = os.getenv("token")
-    url = "https://api.telegram.org/bot"
-    channels_id = os.getenv("channel_id").split(",")
-    url += token
-    method = url + "/sendMessage"
-    for channel_id in channels_id:
-        r = requests.post(
-            method, data={"chat_id": channel_id, "text": text, "parse_mode": "HTML"}
-        )
 
 
 def main() -> None:
