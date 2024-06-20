@@ -1,4 +1,7 @@
+from logging import Logger, getLogger
 import requests
+
+logger: Logger = getLogger(__name__)
 
 
 class NotificationService:
