@@ -1,26 +1,23 @@
-import os
 from typing import Optional, List
-from logging import Logger
+from logging import Logger, getLogger
 import requests
-from logging_config import LoggerSetup, LogConfig
 
-logger_setup = LoggerSetup(logger_name=__name__, log_config=LogConfig(filename=None))
-logger: Logger = logger_setup.get_logger()
-
-PROXIES: dict[str, str] = {"http": os.getenv("proxy")}
-CATALOG_URL = "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v2.json"
+logger: Logger = getLogger(__name__)
 
 
 class CatalogFetcher:
-    @staticmethod
-    def get_catalogs_wb() -> Optional[dict]:
+    def __init__(self, catalog_url: str, proxies: dict[str, str]) -> None:
+        self.catalog_url = catalog_url
+        self.proxies = proxies
+
+    def get_catalogs_wb(self) -> Optional[dict]:
         headers: dict[str, str] = {
             "Accept": "*/*",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         }
         try:
             response: requests.Response = requests.get(
-                url=CATALOG_URL, headers=headers, proxies=PROXIES
+                url=self.catalog_url, headers=headers, proxies=self.proxies
             )
             response.raise_for_status()
             logger.info("Успешно получили данные каталога")
@@ -33,8 +30,7 @@ class CatalogFetcher:
             logger.error("Ошибка декодирования JSON: %s", json_err)
         return None
 
-    @staticmethod
-    def get_data_category(catalogs_wb: Optional[dict]) -> List[dict]:
+    def get_data_category(self, catalogs_wb: Optional[dict]) -> List[dict]:
         if not catalogs_wb:
             logger.warning("Не удалось получить данные каталога.")
             return []
@@ -52,11 +48,11 @@ class CatalogFetcher:
                 )
             else:
                 catalog_data.extend(
-                    CatalogFetcher.get_data_category(catalogs_wb.get("childs", []))
+                    self.get_data_category(catalogs_wb.get("childs", []))
                 )
         else:
             for child in catalogs_wb:
-                catalog_data.extend(CatalogFetcher.get_data_category(child))
+                catalog_data.extend(self.get_data_category(child))
         return catalog_data
 
     @staticmethod

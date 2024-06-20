@@ -1,16 +1,15 @@
 from logging import Logger
 import os
 import datetime
-from typing import Any
 import time
 import shutil
 import requests
 import pandas as pd
-from retry import retry
 from dotenv import load_dotenv
 import schedule
 from logging_config import LogConfig, LoggerSetup
 from catalog_fetcher import CatalogFetcher
+from data_fetcher import DataFetcher
 
 load_dotenv()
 logger_setup = LoggerSetup(logger_name=__name__, log_config=LogConfig(filename=None))
@@ -51,59 +50,6 @@ def get_data_from_json(json_file: dict) -> list:
     ]
 
 
-@retry(Exception, tries=-1, delay=0)
-def scrap_page(
-    session: requests.Session,
-    page: int,
-    shard: str,
-    query: str,
-    low_price: int,
-    top_price: int,
-    discount: int = None,
-) -> dict:
-    """Сбор данных со страниц"""
-    headers: dict[str, str] = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/113.0",
-        "Accept": "*/*",
-        "Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Origin": "https://www.wildberries.ru",
-        "Content-Type": "application/json; charset=utf-8",
-        "Transfer-Encoding": "chunked",
-        "Connection": "keep-alive",
-        "Vary": "Accept-Encoding",
-        "Content-Encoding": "gzip",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "cross-site",
-    }
-
-    base_url: str = f"https://catalog.wb.ru/catalog/{shard}/catalog"
-    params: dict[str, Any] = {
-        "appType": 1,
-        "curr": "rub",
-        "dest": -1257786,
-        "locale": "ru",
-        "page": page,
-        "priceU": f"{low_price * 100};{top_price * 100}",
-        "sort": "popular",
-        "spp": 0,
-    }
-
-    if discount is not None:
-        params["discount"] = discount
-
-    url: str = f"{base_url}?{query}&" + "&".join(
-        [f"{key}={value}" for key, value in params.items()]
-    )
-
-    response: requests.Response = session.get(url, headers=headers, proxies=PROXIES)
-    logger.info("Статус: %d Страница %d Идет сбор...", response.status_code, page)
-
-    response.raise_for_status()
-    return response.json()
-
-
 def save_csv(data: list, filename: str, directory: str = CURRENT_DATA_DIR) -> None:
     """Сохранение результата в CSV файл"""
     df = pd.DataFrame(data)
@@ -116,34 +62,34 @@ def parser(
     url: str, low_price: int = 1, top_price: int = 1000000, discount: int = 0
 ) -> None:
     """Основная функция"""
-    catalog_data: list = CatalogFetcher.get_data_category(CatalogFetcher.get_catalogs_wb())
+    catalog_fetcher = CatalogFetcher(CATALOG_URL, PROXIES)
+    catalog_data: list = catalog_fetcher.get_data_category(catalog_fetcher.get_catalogs_wb())
     if not catalog_data:
         return
 
     try:
-        category: dict = CatalogFetcher.search_category_in_catalog(url=url, catalog_list=catalog_data)
+        category: dict = catalog_fetcher.search_category_in_catalog(url=url, catalog_list=catalog_data)
         if category is None:
             logger.error("Ошибка! Категория не найдена.")
             return
 
         data_list: list = []
-        with requests.Session() as session:
-            for page in range(1, 51):
-                data: dict = scrap_page(
-                    session=session,
-                    page=page,
-                    shard=category["shard"],
-                    query=category["query"],
-                    low_price=low_price,
-                    top_price=top_price,
-                    discount=discount,
-                )
-                page_data: list = get_data_from_json(data)
-                logger.info("Добавлено позиций: %d", len(page_data))
-                if page_data:
-                    data_list.extend(page_data)
-                else:
-                    break
+        data_fetcher = DataFetcher(PROXIES)
+        for page in range(1, 51):
+            data: dict = data_fetcher.scrap_page(
+                page=page,
+                shard=category["shard"],
+                query=category["query"],
+                low_price=low_price,
+                top_price=top_price,
+                discount=discount,
+            )
+            page_data: list = get_data_from_json(data)
+            logger.info("Добавлено позиций: %d", len(page_data))
+            if page_data:
+                data_list.extend(page_data)
+            else:
+                break
         logger.info("Сбор данных завершен. Собрано: %d товаров.", len(data_list))
         save_csv(data_list, f'{category["name"]}_from_{low_price}_to_{top_price}')
         logger.info(
@@ -243,6 +189,7 @@ def compare_and_save_changes() -> None:
                 message = ""
                 for _, row in changes_df.iterrows():
                     send_telegram(
+                        f"---------TEST---------"
                         f"{row['name']}\n"
                         f"Цена была: {row['salePriceU_previous']}\n"
                         f"Цена стала: {row['salePriceU']}\n"
