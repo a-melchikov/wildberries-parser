@@ -1,3 +1,4 @@
+import asyncio
 from logging import Logger
 import os
 import datetime
@@ -5,6 +6,7 @@ import time
 from dotenv import load_dotenv
 import schedule
 
+from catalog_fetcher import CatalogFetcher
 from parser import Parser
 from data_processor import DataProcessor
 from logging_config import LogConfig, LoggerSetup
@@ -27,33 +29,30 @@ TOP_PRICE = 1000000
 DISCOUNT = 10
 
 data_processor = DataProcessor(
-	current_dir="../current_data", previous_dir="../previous_data", changes_dir="../changes_data"
+	current_dir="../current_data",
+	previous_dir="../previous_data",
+	changes_dir="../changes_data",
 )
 parser = Parser(CATALOG_URL, PROXIES, data_processor, LOW_PRICE, TOP_PRICE, DISCOUNT)
 
 
-def scheduled_job() -> None:
+async def scheduled_job() -> None:
 	"""Функция для выполнения запланированной работы"""
 	data_processor.move_data_to_previous()
-	main()
+	await main()
 	data_processor.compare_and_save_changes(TOKEN, CHANNEL_IDS)
 
 
-def main() -> None:
-	urls: list[str] = [
-		"https://www.wildberries.ru/catalog/zhenshchinam/odezhda/kostyumy",
-		"https://www.wildberries.ru/catalog/obuv/detskaya/dlya-devochek",
-		"https://www.wildberries.ru/catalog/obuv/detskaya/dlya-malchikov",
-		"https://www.wildberries.ru/catalog/zhenshchinam/odezhda/bryuki-i-shorty",
-		"https://www.wildberries.ru/catalog/zhenshchinam/odezhda/verhnyaya-odezhda",
-		"https://www.wildberries.ru/catalog/zhenshchinam/odezhda/dzhempery-i-kardigany",
-		"https://www.wildberries.ru/catalog/zhenshchinam/odezhda/dzhinsy-dzhegginsy",
-	]
+async def main() -> None:
+	urls: list[str] = []
+	with open("urls.txt", "r", encoding="utf-8") as file:
+		for row in file:
+			urls.append(row.strip())
 
 	start: datetime.datetime = datetime.datetime.now()
 
 	for url in urls:
-		parser.run(url, 1, 31)
+		await parser.run(url, 1, 31)
 
 	end: datetime.datetime = datetime.datetime.now()
 	total: datetime.timedelta = end - start
@@ -61,9 +60,13 @@ def main() -> None:
 	logger.info("Затраченное время: %s", str(total))
 
 
+def run_scheduled_job():
+	asyncio.run(scheduled_job())
+
+
 if __name__ == "__main__":
-	scheduled_job()
-	schedule.every(1).minutes.do(scheduled_job)
+	run_scheduled_job()
+	schedule.every(1).minutes.do(run_scheduled_job)
 
 	while True:
 		schedule.run_pending()

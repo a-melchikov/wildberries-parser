@@ -110,7 +110,7 @@ class DataProcessor:
 					axis=1,
 				)
 
-				changes_df: pd.DataFrame = merged_df[(merged_df["percent_change"] < -10)]
+				changes_df: pd.DataFrame = merged_df[(merged_df["percent_change"] < -30)]
 
 				if not changes_df.empty:
 					changes_filepath = os.path.join(
@@ -126,8 +126,7 @@ class DataProcessor:
 					notification_service = NotificationService(token, channel_ids)
 					for _, row in changes_df.iterrows():
 						notification_service.send_message(
-							f"---------TEST---------"
-							f"{row['name']}\n"
+							f"{str(row['name']).upper()}\n"
 							f"Цена была: {row['salePriceU_previous']}\n"
 							f"Цена стала: {row['salePriceU']}\n"
 							f"Количество отзывов: {row['feedbacks']}\n"
