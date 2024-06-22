@@ -41,9 +41,9 @@ logger: Logger = setup_logger()
 
 PROXIES, TOKEN, CHANNEL_IDS = get_config()
 CATALOG_URL = "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v2.json"
-LOW_PRICE = 0
+LOW_PRICE = 100
 TOP_PRICE = 1000000
-DISCOUNT = 10
+DISCOUNT = 30
 
 data_processor = DataProcessor(
     current_dir="current_data",
