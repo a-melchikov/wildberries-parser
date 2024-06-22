@@ -1,4 +1,3 @@
-import aiohttp
 import asyncio
 from logging import Logger, getLogger
 from catalog_fetcher import CatalogFetcher

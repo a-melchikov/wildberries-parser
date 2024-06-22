@@ -7,8 +7,8 @@ logger: Logger = getLogger(__name__)
 
 class CatalogFetcher:
     def __init__(self, catalog_url: str, proxies: dict[str, str]) -> None:
-        self.catalog_url = catalog_url
-        self.proxies = proxies
+        self.catalog_url: str = catalog_url
+        self.proxies: dict[str, str] = proxies
 
     def get_catalogs_wb(self) -> Optional[dict]:
         headers: dict[str, str] = {
@@ -17,7 +17,7 @@ class CatalogFetcher:
         }
         try:
             response: requests.Response = requests.get(
-                url=self.catalog_url, headers=headers, proxies=self.proxies
+                url=self.catalog_url, headers=headers, proxies=self.proxies, timeout=10
             )
             response.raise_for_status()
             logger.info("Успешно получили данные каталога")

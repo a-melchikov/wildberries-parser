@@ -1,5 +1,6 @@
 from logging import Logger, getLogger
 from typing import Any
+import asyncio
 import aiohttp
 
 logger: Logger = getLogger(__name__)
