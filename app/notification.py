@@ -40,9 +40,9 @@ async def main():
     # message = "hello" * 5
     message: str = (
         "📢 <b>РЕЗИНКИ ДЛЯ ВОЛОС ВИШЕНКИ</b>\n\n"
-        "🔻 <b>Цена была:</b> <code>379₽</code>\n\n"
+        "🔻 <b>Цена была:</b> <code>379₽</code>\n"
         "🔺 <b>Цена стала:</b> <code>249₽</code>\n\n"
-        "💬 <b>Количество отзывов:</b> <code>420</code>\n\n"
+        "💬 <b>Количество отзывов:</b> <code>420</code>\n"
         "⭐️ <b>Рейтинг:</b> <code>4.8</code>\n\n"
         "📉 <b>Цена уменьшилась на:</b> <code>35%</code>\n\n"
         "🔗 <a href='https://www.wildberries.ru/catalog/139813034/detail.aspx?targetUrl=BP'>Ссылка на товар</a>"

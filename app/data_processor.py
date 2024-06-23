@@ -5,9 +5,10 @@ from math import ceil
 import shutil
 from typing import Any, Literal
 import pandas as pd
-
+from dotenv import load_dotenv
 from notification import NotificationService
 
+load_dotenv()
 logger: Logger = getLogger(__name__)
 
 
@@ -64,10 +65,15 @@ class DataProcessor:
         fancy_digits = "𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵"
         return "".join(fancy_digits[x] for x in list(map(int, str(number))))
 
-    async def compare_and_save_changes(self, token: str, channel_ids: list[str]) -> None:
+    async def compare_and_save_changes(
+        self, token: str, channel_ids: list[str]
+    ) -> None:
         """Сравнение файлов и сохранение изменений"""
+        logger.info("Начало процесса сравнения и сохранения изменений")
+
         if not os.path.exists(self.changes_dir):
             os.makedirs(self.changes_dir)
+            logger.info("Создан каталог для изменений: %s", self.changes_dir)
 
         columns_to_include: list[str] = [
             "id",
@@ -92,6 +98,7 @@ class DataProcessor:
             previous_filepath = os.path.join(self.previous_dir, current_file)
 
             if os.path.exists(previous_filepath):
+                logger.info("Обработка файла: %s", current_file)
                 current_df: pd.DataFrame = pd.read_csv(current_filepath)
                 previous_df: pd.DataFrame = pd.read_csv(previous_filepath)
 
@@ -137,13 +144,13 @@ class DataProcessor:
                             )
                         )
                         message: str = (
-                            f"📢 <b>{str(row['name']).upper()}</b><br><br>"
-                            f"🔻 <b>Цена была:</b> <code>{row['salePriceU_previous']}₽</code><br>"
-                            f"🔺 <b>Цена стала:</b> <code>{row['salePriceU']}₽</code><br><br>"
-                            f"💬 <b>Количество отзывов:</b> <code>{row['feedbacks']}</code><br>"
-                            f"⭐️ <b>Рейтинг:</b> <code>{row['supplierRating']}</code><br><br>"
-                            f"📉 <b>Цена уменьшилась на:</b> <code>{self.beautify_number(discount_percent)}%</code><br><br>"
-                            f"🔗 <a href='{row['link']}'>Ссылка на товар</a><br>"
+                            f"📢 <b>{str(row['name']).upper()}</b>\n\n"
+                            f"🔻 <b>Цена была:</b> <code>{row['salePriceU_previous']}₽</code>\n"
+                            f"🔺 <b>Цена стала:</b> <code>{row['salePriceU']}₽</code>\n\n"
+                            f"💬 <b>Количество отзывов:</b> <code>{row['feedbacks']}</code>\n"
+                            f"⭐️ <b>Рейтинг:</b> <code>{row['supplierRating']}</code>\n\n"
+                            f"📉 <b>Цена уменьшилась на:</b> <code>{self.beautify_number(discount_percent)}%</code>\n\n"
+                            f"🔗 <a href='{row['link']}'>Ссылка на товар</a>"
                         )
                         tasks.append(notification_service.send_message(message))
                     await asyncio.gather(*tasks)
@@ -151,3 +158,20 @@ class DataProcessor:
                     logger.info("Изменений не найдено для файла %s", current_file)
             else:
                 logger.warning("Предыдущий файл для %s не найден", current_file)
+
+        logger.info("Процесс сравнения и сохранения изменений завершён")
+
+
+async def main():
+    data_processor = DataProcessor(
+        current_dir="current_data",
+        previous_dir="previous_data",
+        changes_dir="../changes_data",
+    )
+    await data_processor.compare_and_save_changes(
+        os.getenv("token"), os.getenv("channel_id").split(",")
+    )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

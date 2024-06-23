@@ -58,7 +58,7 @@ async def scheduled_job() -> None:
     try:
         data_processor.move_data_to_previous()
         await main()
-        data_processor.compare_and_save_changes(TOKEN, CHANNEL_IDS)
+        await data_processor.compare_and_save_changes(TOKEN, CHANNEL_IDS)
     except Exception as e:
         logger.error("Ошибка при выполнении запланированной работы: %s", e)
 
@@ -72,7 +72,7 @@ async def main() -> None:
 
     start: datetime.datetime = datetime.datetime.now()
 
-    for url in urls:
+    for url in urls[:5]:
         await parser.run(url, 1, 31)
 
     end: datetime.datetime = datetime.datetime.now()
