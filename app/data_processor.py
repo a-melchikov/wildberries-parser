@@ -1,19 +1,21 @@
 import asyncio
-from logging import Logger, getLogger
 import os
-from math import ceil
-import shutil
+from logging import Logger, getLogger
 from typing import Any, Literal
+from math import ceil
+
+import shutil
 import pandas as pd
 from dotenv import load_dotenv
-from notification import NotificationService
+
+from .notification import NotificationService
 
 load_dotenv()
 logger: Logger = getLogger(__name__)
 
 
 class DataProcessor:
-    def __init__(self, current_dir: str, previous_dir: str, changes_dir: str) -> str:
+    def __init__(self, current_dir: str, previous_dir: str, changes_dir: str) -> None:
         self.current_dir: str = current_dir
         self.previous_dir: str = previous_dir
         self.changes_dir: str = changes_dir
@@ -42,6 +44,7 @@ class DataProcessor:
         ]
 
     def save_csv(self, data: list, filename: str) -> None:
+        """Сохраняем данные в CSV"""
         df = pd.DataFrame(data)
         file_path: str = os.path.join(self.current_dir, f"{filename}.csv")
         df.to_csv(file_path, index=False)
@@ -62,13 +65,23 @@ class DataProcessor:
 
     @staticmethod
     def beautify_number(number: int) -> str:
+        """Преобразует число в красивый вид"""
         fancy_digits = "𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵"
         return "".join(fancy_digits[x] for x in list(map(int, str(number))))
+
+    @staticmethod
+    def calculate_percent_change(
+        current_price: float, previous_price: float
+    ) -> float | Any | Literal[0]:
+        """Вычисляет процентное изменение между двумя ценами"""
+        if previous_price == 0:
+            return float("inf") if current_price != 0 else 0
+        return ((current_price - previous_price) / previous_price) * 100
 
     async def compare_and_save_changes(
         self, token: str, channel_ids: list[str]
     ) -> None:
-        """Сравнение файлов и сохранение изменений"""
+        """Сравнивает файлы и сохраняет изменения."""
         logger.info("Начало процесса сравнения и сохранения изменений")
 
         if not os.path.exists(self.changes_dir):
@@ -102,64 +115,85 @@ class DataProcessor:
                 current_df: pd.DataFrame = pd.read_csv(current_filepath)
                 previous_df: pd.DataFrame = pd.read_csv(previous_filepath)
 
-                merged_df: pd.DataFrame = current_df.merge(
-                    previous_df, on="id", suffixes=("_current", "_previous")
+                changes_df = await self.process_file(
+                    current_df, previous_df, columns_to_include
                 )
-
-                def calculate_percent_change(
-                    current_price, previous_price
-                ) -> float | Any | Literal[0]:
-                    if previous_price == 0:
-                        return float("inf") if current_price != 0 else 0
-                    return ((current_price - previous_price) / previous_price) * 100
-
-                merged_df["percent_change"] = merged_df.apply(
-                    lambda row: calculate_percent_change(
-                        row["salePriceU_current"], row["salePriceU_previous"]
-                    ),
-                    axis=1,
-                )
-
-                changes_df: pd.DataFrame = merged_df[
-                    (merged_df["percent_change"] < -30)
-                ]
 
                 if not changes_df.empty:
-                    changes_filepath = os.path.join(
-                        self.changes_dir, f"changes_{current_file}"
+                    await self.handle_changes(
+                        changes_df, current_file, token, channel_ids
                     )
-                    changes_df = changes_df[columns_to_include]
-                    changes_df.columns = [
-                        col.replace("_current", "") for col in changes_df.columns
-                    ]
-                    changes_df.to_csv(changes_filepath, index=False)
-                    logger.info("Изменения сохранены в %s", changes_filepath)
-
-                    notification_service = NotificationService(token, channel_ids)
-                    tasks = []
-                    for _, row in changes_df.iterrows():
-                        discount_percent = ceil(
-                            -calculate_percent_change(
-                                row["salePriceU"], row["salePriceU_previous"]
-                            )
-                        )
-                        message: str = (
-                            f"📢 <b>{str(row['name']).upper()}</b>\n\n"
-                            f"🔻 <b>Цена была:</b> <code>{row['salePriceU_previous']}₽</code>\n"
-                            f"🔺 <b>Цена стала:</b> <code>{row['salePriceU']}₽</code>\n\n"
-                            f"💬 <b>Количество отзывов:</b> <code>{row['feedbacks']}</code>\n"
-                            f"⭐️ <b>Рейтинг:</b> <code>{row['supplierRating']}</code>\n\n"
-                            f"📉 <b>Цена уменьшилась на:</b> <code>{self.beautify_number(discount_percent)}%</code>\n\n"
-                            f"🔗 <a href='{row['link']}'>Ссылка на товар</a>"
-                        )
-                        tasks.append(notification_service.send_message(message))
-                    await asyncio.gather(*tasks)
                 else:
                     logger.info("Изменений не найдено для файла %s", current_file)
             else:
                 logger.warning("Предыдущий файл для %s не найден", current_file)
 
         logger.info("Процесс сравнения и сохранения изменений завершён")
+
+    async def process_file(
+        self,
+        current_df: pd.DataFrame,
+        previous_df: pd.DataFrame,
+        columns_to_include: list[str],
+    ) -> pd.DataFrame:
+        """Обрабатывает один файл и возвращает изменения."""
+        merged_df: pd.DataFrame = current_df.merge(
+            previous_df, on="id", suffixes=("_current", "_previous")
+        )
+        merged_df["percent_change"] = merged_df.apply(
+            lambda row: self.calculate_percent_change(
+                row["salePriceU_current"], row["salePriceU_previous"]
+            ),
+            axis=1,
+        )
+
+        return merged_df[merged_df["percent_change"] < -30][columns_to_include]
+
+    async def handle_changes(
+        self,
+        changes_df: pd.DataFrame,
+        current_file: str,
+        token: str,
+        channel_ids: list[str],
+    ) -> None:
+        """Обрабатывает изменения и сохраняет их."""
+        changes_filepath = os.path.join(self.changes_dir, f"changes_{current_file}")
+        changes_df.columns = [col.replace("_current", "") for col in changes_df.columns]
+        changes_df.to_csv(changes_filepath, index=False)
+        logger.info("Изменения сохранены в %s", changes_filepath)
+
+        notification_service = NotificationService(token, channel_ids)
+        await self.send_notifications(changes_df, notification_service)
+
+    async def send_notifications(
+        self, changes_df: pd.DataFrame, notification_service: NotificationService
+    ) -> None:
+        """Отправляет уведомления о каждом изменении."""
+        tasks = [
+            self.send_notification(row, notification_service)
+            for _, row in changes_df.iterrows()
+        ]
+        await asyncio.gather(*tasks)
+
+    async def send_notification(
+        self, row: pd.Series, notification_service: NotificationService
+    ) -> None:
+        """Отправляет уведомление об одном изменении."""
+        discount_percent = ceil(
+            -self.calculate_percent_change(
+                row["salePriceU"], row["salePriceU_previous"]
+            )
+        )
+        message: str = (
+            f"📢 <b>{str(row['name']).upper()}</b>\n\n"
+            f"🔻 <b>Цена была:</b> <code>{row['salePriceU_previous']}₽</code>\n"
+            f"🔺 <b>Цена стала:</b> <code>{row['salePriceU']}₽</code>\n\n"
+            f"💬 <b>Количество отзывов:</b> <code>{row['feedbacks']}</code>\n"
+            f"⭐️ <b>Рейтинг:</b> <code>{row['supplierRating']}</code>\n\n"
+            f"📉 <b>Цена уменьшилась на:</b> <code>{self.beautify_number(discount_percent)}%</code>\n\n"
+            f"🔗 <a href='{row['link']}'>Ссылка на товар</a>"
+        )
+        await notification_service.send_message(message)
 
 
 async def main():

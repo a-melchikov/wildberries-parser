@@ -11,6 +11,9 @@ requests = "^2.32.3"
 aiohttp = "^3.10.10"
 pandas = "^2.2.3"
 python-dotenv = "^1.0.1"
+pre-commit = "^4.0.1"
+aiogram = "^3.13.1"
+schedule = "^1.2.2"
 
 [tool.poetry.group.dev.dependencies]
 pylint = "^3.3.1"

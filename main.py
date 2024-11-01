@@ -1,13 +1,24 @@
 import asyncio
-from logging import Logger
-import os
 import datetime
+import os
 import time
-from dotenv import load_dotenv
+from logging import Logger
+
 import schedule
-from parser import Parser
-from data_processor import DataProcessor
-from logging_config import LogConfig, LoggerSetup
+from dotenv import load_dotenv
+
+from app.data_parser import Parser, ParserConfig
+from app.data_processor import DataProcessor
+from app.logging_config import LogConfig, LoggerSetup
+from app.config import (
+    PROXIES,
+    TOKEN,
+    CHANNEL_IDS,
+    CATALOG_URL,
+    LOW_PRICE,
+    TOP_PRICE,
+    DISCOUNT,
+)
 
 load_dotenv()
 
@@ -17,13 +28,6 @@ def setup_logger() -> Logger:
         logger_name=__name__, log_config=LogConfig(filename=None)
     )
     return logger_setup.get_logger()
-
-
-def get_config() -> tuple[dict[str, str], str, list[str]]:
-    proxies: dict[str, str] = {"http": os.getenv("proxy")}
-    token: str | None = os.getenv("token")
-    channel_ids: list[str] = os.getenv("channel_id").split(",")
-    return proxies, token, channel_ids
 
 
 def load_urls(file_path: str) -> list[str]:
@@ -39,18 +43,23 @@ def load_urls(file_path: str) -> list[str]:
 
 logger: Logger = setup_logger()
 
-PROXIES, TOKEN, CHANNEL_IDS = get_config()
-CATALOG_URL = "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-ru-ru-v2.json"
-LOW_PRICE = 100
-TOP_PRICE = 1000000
-DISCOUNT = 30
 
 data_processor = DataProcessor(
     current_dir="current_data",
     previous_dir="previous_data",
     changes_dir="../changes_data",
 )
-parser = Parser(CATALOG_URL, PROXIES, data_processor, LOW_PRICE, TOP_PRICE, DISCOUNT)
+
+parser = Parser(
+    CATALOG_URL,
+    PROXIES,
+    data_processor,
+    ParserConfig(
+        LOW_PRICE,
+        TOP_PRICE,
+        DISCOUNT,
+    ),
+)
 
 
 async def scheduled_job() -> None:

@@ -17,7 +17,10 @@ class CatalogFetcher:
         }
         try:
             response: requests.Response = requests.get(
-                url=self.catalog_url, headers=headers, proxies=self.proxies, timeout=10
+                url=self.catalog_url,
+                headers=headers,
+                proxies=self.proxies,
+                timeout=(10, 20),
             )
             response.raise_for_status()
             logger.info("Успешно получили данные каталога")

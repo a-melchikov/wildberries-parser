@@ -1,5 +1,5 @@
-from catalog_fetcher import CatalogFetcher
-from main import CATALOG_URL, PROXIES
+from .catalog_fetcher import CatalogFetcher
+from .config import CATALOG_URL, PROXIES
 
 cf = CatalogFetcher(CATALOG_URL, PROXIES)
 with open("urls.txt", "w", encoding="utf-8") as file:
