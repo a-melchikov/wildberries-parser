@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    volumes:
+      - ./app:/app
+    environment:
+      - token=${token}
+      - channel_id=${channel_id}
+      - proxy=${proxy}
+    command: [ "python", "main.py" ]
+
+  telegram_bot:
+    build:
+      context: .
+      dockerfile: telegram_bot/Dockerfile
+    volumes:
+      - ./telegram_bot:/bot
+    environment:
+      - token=${token}
+    command: [ "python", "app.py" ]
