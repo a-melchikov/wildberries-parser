@@ -32,7 +32,13 @@ class Parser:
         self.data_processor: DataProcessor = data_processor
         self.config: ParserConfig = config
 
-    async def run(self, url: str, start_page: int = 1, end_page: int = 51) -> None:
+    async def run(
+        self,
+        headers: dict[str, str],
+        url: str,
+        start_page: int = 1,
+        end_page: int = 31,
+    ) -> None:
         try:
             logger.info("Текущая конфигурация: %s", self.config)
             catalog_data = await self.fetch_catalog_data()
@@ -45,7 +51,12 @@ class Parser:
                 logger.error("Ошибка! Категория не найдена для URL: %s", url)
                 return
 
-            data_list = await self.fetch_data_pages(category, start_page, end_page)
+            data_list = await self.fetch_data_pages(
+                headers,
+                category,
+                start_page,
+                end_page,
+            )
             self.save_data(data_list, category, url)
         except TypeError as te:
             logger.error(
@@ -71,10 +82,10 @@ class Parser:
         return catalog_fetcher.search_category_in_catalog(url, catalog_data)
 
     async def fetch_data_pages(
-        self, category: dict, start_page: int, end_page: int
+        self, headers: dict[str, str], category: dict, start_page: int, end_page: int
     ) -> list:
         """Асинхронный сбор данных со страниц."""
-        data_fetcher = DataFetcher(self.proxies)
+        data_fetcher = DataFetcher(self.proxies, headers)
         tasks = [
             asyncio.create_task(
                 data_fetcher.scrap_page(

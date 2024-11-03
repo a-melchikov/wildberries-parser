@@ -83,7 +83,10 @@ class DataProcessor:
         return ((current_price - previous_price) / previous_price) * 100
 
     async def compare_and_save_changes(
-        self, token: str, channel_ids: list[str]
+        self,
+        token: str,
+        channel_ids: list[str],
+        price_difference_percentage: int | float,
     ) -> None:
         """Сравнивает файлы и сохраняет изменения."""
         logger.info("Начало процесса сравнения и сохранения изменений")
@@ -120,7 +123,10 @@ class DataProcessor:
                 previous_df: pd.DataFrame = pd.read_csv(previous_filepath)
 
                 changes_df = await self.process_file(
-                    current_df, previous_df, columns_to_include
+                    current_df,
+                    previous_df,
+                    columns_to_include,
+                    price_difference_percentage,
                 )
 
                 if not changes_df.empty:
@@ -139,6 +145,7 @@ class DataProcessor:
         current_df: pd.DataFrame,
         previous_df: pd.DataFrame,
         columns_to_include: list[str],
+        price_difference_percentage: int | float,
     ) -> pd.DataFrame:
         """Обрабатывает один файл и возвращает изменения."""
         merged_df: pd.DataFrame = current_df.merge(
@@ -151,7 +158,9 @@ class DataProcessor:
             axis=1,
         )
 
-        return merged_df[merged_df["percent_change"] < -30][columns_to_include]
+        return merged_df[merged_df["percent_change"] < -price_difference_percentage][
+            columns_to_include
+        ]
 
     async def handle_changes(
         self,
@@ -207,7 +216,7 @@ async def main():
         changes_dir="../changes_data",
     )
     await data_processor.compare_and_save_changes(
-        os.getenv("token"), os.getenv("channel_id").split(",")
+        os.getenv("token"), os.getenv("channel_id").split(","), 30
     )
 
 

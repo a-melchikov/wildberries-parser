@@ -10,15 +10,7 @@ from dotenv import load_dotenv
 from data_parser import Parser, ParserConfig
 from data_processor import DataProcessor
 from logging_config import LogConfig, LoggerSetup
-from config import (
-    PROXIES,
-    TOKEN,
-    CHANNEL_IDS,
-    CATALOG_URL,
-    LOW_PRICE,
-    TOP_PRICE,
-    DISCOUNT,
-)
+from config import APIConfig, ScheduleSettings, PriceSettings, DataDirectories, Headers
 
 load_dotenv()
 
@@ -44,19 +36,19 @@ def load_urls(file_path: str) -> list[str]:
 logger: Logger = setup_logger()
 
 data_processor = DataProcessor(
-    current_dir=os.path.abspath("current_data"),
-    previous_dir=os.path.abspath("previous_data"),
-    changes_dir=os.path.abspath("changes_data"),
+    current_dir=os.path.abspath(DataDirectories.CURRENT_DATA_DIR),
+    previous_dir=os.path.abspath(DataDirectories.PREVIOUS_DATA_DIR),
+    changes_dir=os.path.abspath(DataDirectories.CHANGES_DATA_DIR),
 )
 
 parser = Parser(
-    CATALOG_URL,
-    PROXIES,
+    APIConfig.CATALOG_URL,
+    APIConfig.PROXIES,
     data_processor,
     ParserConfig(
-        LOW_PRICE,
-        TOP_PRICE,
-        DISCOUNT,
+        PriceSettings.LOW_PRICE,
+        PriceSettings.TOP_PRICE,
+        PriceSettings.DISCOUNT,
     ),
 )
 
@@ -66,13 +58,17 @@ async def scheduled_job() -> None:
     try:
         data_processor.move_data_to_previous()
         await main()
-        await data_processor.compare_and_save_changes(TOKEN, CHANNEL_IDS)
+        await data_processor.compare_and_save_changes(
+            APIConfig.TOKEN,
+            APIConfig.CHANNEL_IDS,
+            APIConfig.PRICE_DIFFERENCE_PERCENTAGE,
+        )
     except Exception as e:
         logger.error("Ошибка при выполнении запланированной работы: %s", e)
 
 
 async def main() -> None:
-    urls: list[str] = load_urls(os.path.abspath("urls.txt"))
+    urls: list[str] = load_urls(os.path.abspath(DataDirectories.URLS_FILE_PATH))
 
     if not urls:
         logger.error("Список URL пуст.")
@@ -80,8 +76,10 @@ async def main() -> None:
 
     start: datetime.datetime = datetime.datetime.now()
 
-    for url in urls[:5]:
-        await parser.run(url, 1, 31)
+    for url in urls[: ScheduleSettings.MAX_URLS_TO_PARSE]:
+        await parser.run(
+            Headers.HEADERS, url, ScheduleSettings.START_PAGE, ScheduleSettings.END_PAGE
+        )
 
     end: datetime.datetime = datetime.datetime.now()
     total: datetime.timedelta = end - start
@@ -95,7 +93,7 @@ def run_scheduled_job() -> None:
 
 if __name__ == "__main__":
     run_scheduled_job()
-    schedule.every(1).minutes.do(run_scheduled_job)
+    schedule.every(ScheduleSettings.SCHEDULE_INTERVAL).seconds.do(run_scheduled_job)
 
     while True:
         schedule.run_pending()
