@@ -8,7 +8,7 @@ import shutil
 import pandas as pd
 from dotenv import load_dotenv
 
-from .notification import NotificationService
+from notification import NotificationService
 
 load_dotenv()
 logger: Logger = getLogger(__name__)
@@ -16,9 +16,13 @@ logger: Logger = getLogger(__name__)
 
 class DataProcessor:
     def __init__(self, current_dir: str, previous_dir: str, changes_dir: str) -> None:
-        self.current_dir: str = current_dir
-        self.previous_dir: str = previous_dir
-        self.changes_dir: str = changes_dir
+        self.current_dir: str = os.path.abspath(current_dir)
+        self.previous_dir: str = os.path.abspath(previous_dir)
+        self.changes_dir: str = os.path.abspath(changes_dir)
+
+        for directory in [self.current_dir, self.previous_dir, self.changes_dir]:
+            os.makedirs(directory, exist_ok=True)
+            logger.info("Каталог %s создан или уже существует", directory)
 
     @staticmethod
     def get_data_from_json(json_file: dict) -> list:

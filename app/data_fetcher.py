@@ -3,7 +3,7 @@ from typing import Any
 import asyncio
 import aiohttp
 
-from .page_params import PageParams
+from page_params import PageParams
 
 logger: Logger = getLogger(__name__)
 

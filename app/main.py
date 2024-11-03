@@ -7,10 +7,10 @@ from logging import Logger
 import schedule
 from dotenv import load_dotenv
 
-from app.data_parser import Parser, ParserConfig
-from app.data_processor import DataProcessor
-from app.logging_config import LogConfig, LoggerSetup
-from app.config import (
+from data_parser import Parser, ParserConfig
+from data_processor import DataProcessor
+from logging_config import LogConfig, LoggerSetup
+from config import (
     PROXIES,
     TOKEN,
     CHANNEL_IDS,
@@ -43,11 +43,10 @@ def load_urls(file_path: str) -> list[str]:
 
 logger: Logger = setup_logger()
 
-
 data_processor = DataProcessor(
-    current_dir="current_data",
-    previous_dir="previous_data",
-    changes_dir="../changes_data",
+    current_dir=os.path.abspath("current_data"),
+    previous_dir=os.path.abspath("previous_data"),
+    changes_dir=os.path.abspath("changes_data"),
 )
 
 parser = Parser(
@@ -73,7 +72,7 @@ async def scheduled_job() -> None:
 
 
 async def main() -> None:
-    urls: list[str] = load_urls("app/urls.txt")
+    urls: list[str] = load_urls(os.path.abspath("urls.txt"))
 
     if not urls:
         logger.error("Список URL пуст.")

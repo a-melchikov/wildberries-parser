@@ -2,10 +2,10 @@ import asyncio
 from dataclasses import dataclass
 from logging import Logger, getLogger
 
-from .page_params import PageParams
-from .catalog_fetcher import CatalogFetcher
-from .data_fetcher import DataFetcher
-from .data_processor import DataProcessor
+from page_params import PageParams
+from catalog_fetcher import CatalogFetcher
+from data_fetcher import DataFetcher
+from data_processor import DataProcessor
 
 logger: Logger = getLogger(__name__)
 

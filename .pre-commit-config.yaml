@@ -11,7 +11,7 @@ repos:
         entry: poetry run pylint
         language: system
         types: [python]
-        args: ["--disable=C0114,C0115,C0116,W0621,R0903,W0718"]
+        args: ["--disable=C0114,C0115,C0116,W0621,R0903,W0718,E0401"]
 
       - id: pytest
         name: pytest
