@@ -168,3 +168,4 @@ avatars
 staticfiles
 *.xlsx
 *.csv
+*.code-workspace

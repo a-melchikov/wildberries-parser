@@ -8,7 +8,7 @@ import shutil
 import pandas as pd
 from dotenv import load_dotenv
 
-from notification import NotificationService
+from app.notification import NotificationService
 
 load_dotenv()
 logger: Logger = getLogger(__name__)
@@ -158,9 +158,10 @@ class DataProcessor:
             axis=1,
         )
 
-        return merged_df[merged_df["percent_change"] < -price_difference_percentage][
-            columns_to_include
-        ]
+        return merged_df[
+            (merged_df["percent_change"] != -100)
+            & (merged_df["percent_change"] < -price_difference_percentage)
+        ][columns_to_include]
 
     async def handle_changes(
         self,
